@@ -1,0 +1,209 @@
+import { useEffect, useState, useContext, createContext } from 'react'
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth"
+import { doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
+import { auth, db } from '../firebase/config'
+// import Cookies from "js-cookie"
+
+const UsrCtx = createContext()
+export const GetUserContext = () => useContext(UsrCtx)
+
+const UserContextProvider = ({ children }) => {
+
+    const [error, setError] = useState({ id: 0, label: '' })
+    const [user, setUser] = useState({})
+    const [eventUser, setEventUser] = useState({})
+    const [loading, setLoading] = useState(false)
+
+    const writeUserOnStore = async (user, formValues) => {
+        await setDoc(doc(db, "users", user.uid), {
+            id: user.uid,
+            email: user.email,
+            name: formValues.name,
+            country: formValues.country,
+            voted: [],
+        })
+    }
+
+    const getUserFromStoreSetState = async (uid) => {
+
+        const docSnap = await getDoc(doc(db, "users", uid))
+
+        if (docSnap.exists()) {
+
+            const user = docSnap.data()
+
+            // Set user context state
+            setUser({
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                country: user.country,
+                voted: user.voted,
+                admin: user?.admin || false
+            })
+
+        } else {
+
+            console.log("User doesnt exist")
+        }
+    }
+
+    const logOut = () => {
+        setUser({})
+        // Cookies.remove('user')
+    }
+
+    const isLogged = () => {
+        // const cookies = Cookies.get()
+        // return cookies?.user !== undefined
+    }
+
+    const isAdmin = () => {
+        return user.admin
+    }
+
+    const writeVote = async (userId, category, nominee) => {
+        await updateDoc(doc(db, "users", userId), {
+            voted: arrayUnion({
+                category: category,
+                nominee: nominee.name,
+            })
+        })
+
+        //UPDATE THE USER STATE
+        const userSnap = await getDoc(doc(db, "users", userId))
+
+        if (userSnap.exists()) {
+
+            const voted = userSnap.data().voted
+
+            setUser({
+                ...user,
+                voted: voted,
+            })
+
+            setLoading(false)
+
+        } else {
+            console.log('No such document or user')
+        }
+    }
+
+    const removeVote = async (userId, category, nominee) => {
+        await updateDoc(doc(db, "users", userId), {
+            voted: arrayRemove({
+                category: category,
+                nominee: nominee.name,
+            })
+        })
+
+        //UPDATE THE USER STATE
+        const userSnap = await getDoc(doc(db, "users", userId))
+
+        if (userSnap.exists()) {
+
+            const voted = userSnap.data().voted
+
+            setUser({
+                ...user,
+                voted: voted,
+            })
+
+            setLoading(false)
+
+        } else {
+            console.log('No such document or user')
+        }
+    }
+
+    const wasVoted = (category, nominee, voted) => {
+        return voted?.some(vote => vote.nominee === nominee && vote.category === category)
+    }
+
+    const createUserWithEmail = (formValues, closeLogin) => {
+        createUserWithEmailAndPassword(auth, formValues.email, '123123')
+            .then((userCredential) => {
+
+                const user = userCredential.user
+
+                setUser({
+                    id: user.uid,
+                    email: user.email,
+                    name: formValues.name,
+                    country: formValues.country,
+                    voted: [],
+                })
+
+                writeUserOnStore(user, formValues)
+
+                Cookies.set('user', user.uid)
+
+                if (error.label) setError({ ...error, label: '' })
+
+                closeLogin({ open: false, type: '' })
+            })
+            .catch(err => {
+                console.log('Error: ', err.code)
+                if (err.code === 'auth/email-already-in-use') setError({ id: 1, label: 'This email is already in use' })
+            })
+            .finally(() => {
+                setLoading(false)
+            })
+
+    }
+
+    const signInWithEmail = (usr, closeLogin) => {
+        signInWithEmailAndPassword(auth, usr, '123123')
+            .then((userCredential) => {
+
+                const user = userCredential.user
+
+                getUserFromStoreSetState(user.uid)
+
+                // Cookies.set('user', user.uid)
+
+                if (error.label) setError({ ...error, label: '' })
+
+                closeLogin({ open: false, type: '' })
+            })
+            .catch(err => {
+                console.log(err.code)
+                if (err.code === 'auth/user-not-found') setError({ id: 3, label: "This user doesn't exist" })
+            })
+            .finally(() => {
+                setLoading(false)
+            })
+
+    }
+
+    useEffect(() => {
+
+        // const cookies = Cookies.get()
+
+        // if (cookies.user !== undefined) {
+        //     getUserFromStoreSetState(cookies.user)
+        // }
+
+    }, [])
+
+    return (
+        <UsrCtx.Provider value={{
+            user,
+            setUser,
+            createUserWithEmail,
+            error,
+            setError,
+            logOut,
+            isLogged,
+            signInWithEmail,
+            loading,
+            setLoading,
+            writeVote,
+            wasVoted,
+            removeVote,
+            isAdmin,
+        }}>{children}</UsrCtx.Provider>
+    )
+}
+
+export default UserContextProvider

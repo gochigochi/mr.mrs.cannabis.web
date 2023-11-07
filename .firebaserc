@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "default": "someapp-4381f",
+    "production": "mrmrscannabis-197d1",
+    "dev": "someapp-4381f"
+  },
+  "targets": {},
+  "etags": {}
+}
